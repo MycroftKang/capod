@@ -2,6 +2,7 @@ package eu.darken.capod.monitor.core.worker
 
 import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -119,9 +120,21 @@ class MonitorWorker @AssistedInject constructor(
             .distinctUntilChanged()
             .throttleLatest(1000)
             .onEach { currentDevice ->
+
+                var liveUpdate: Boolean = false;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+//                    if (notificationManager.canPostPromotedNotifications())
+//                    {
+//                        liveUpdate = true
+//                    }
+                    liveUpdate = true
+                } else {
+                    liveUpdate = false
+                }
+
                 notificationManager.notify(
                     MonitorNotifications.NOTIFICATION_ID,
-                    notifications.getNotification(currentDevice),
+                    notifications.getNotification(currentDevice, liveUpdate),
                 )
                 if (generalSettings.useExtraMonitorNotification.value && currentDevice != null) {
                     notificationManager.notify(

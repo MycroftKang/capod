@@ -8,6 +8,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.BitmapFactory
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.ForegroundInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -32,6 +34,7 @@ import eu.darken.capod.pods.core.getBatteryLevelRightPod
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 
 class MonitorNotifications @Inject constructor(
@@ -69,6 +72,175 @@ class MonitorNotifications @Inject constructor(
             setSmallIcon(eu.darken.capod.common.R.drawable.devic_earbuds_generic_both)
             setOngoing(true)
             setContentTitle(context.getString(eu.darken.capod.common.R.string.app_name))
+            setOnlyAlertOnce(true)
+        }
+    }
+
+    private fun averagePercent(p1: String, p2: String): String {
+        val n1 = p1.removeSuffix("%").toInt()
+        val n2 = p2.removeSuffix("%").toInt()
+
+        val avg = (n1 + n2) / 2
+        return "$avg%"
+    }
+
+    private fun getLiveUpdateBuilder(device: PodDevice?): NotificationCompat.Builder {
+        if (device == null) {
+            return builder.apply {
+                setCustomContentView(null)
+                setStyle(NotificationCompat.BigTextStyle())
+                setContentTitle(context.getString(eu.darken.capod.common.R.string.pods_none_label_short))
+                setSubText(context.getString(eu.darken.capod.common.R.string.app_name))
+                setSmallIcon(eu.darken.capod.common.R.drawable.devic_earbuds_generic_both)
+            }
+        }
+
+        // Options here should be mutually exclusive, and are prioritized by their order of importance
+        // Some options are omitted here, as they will conflict with other options
+        // TODO: Implement a settings pane to allow user to customize this
+        val stateText = when {
+            // Pods charging state
+            // This goes first as pods should not be worn if it is still charging
+            device is HasChargeDetection && device.isHeadsetBeingCharged -> {
+                context.getString(eu.darken.capod.common.R.string.pods_charging_label)
+            }
+
+            // Pods wear state
+            device is HasEarDetection -> {
+                if (device.isBeingWorn) context.getString(eu.darken.capod.common.R.string.headset_being_worn_label)
+                else context.getString(eu.darken.capod.common.R.string.headset_not_being_worn_label)
+            }
+
+            // Case charge state
+            // This is under pods wear state as we don't want it conflicting with it
+            device is HasCase && device.isCaseCharging -> {
+                context.getString(eu.darken.capod.common.R.string.pods_charging_label)
+            }
+
+            else -> context.getString(eu.darken.capod.common.R.string.pods_case_unknown_state)
+        }
+
+        val batteryText = when (device) {
+            is DualPodDevice -> {
+                val left = device.batteryLeftPodPercent
+                val right = device.batteryRightPodPercent
+                when {
+                    device is HasCase -> {
+                        val text = mutableListOf<String>()
+
+                        val case = device.batteryCasePercent
+
+
+                        if (left != null){
+                            val value = left.let { "${(it * 100).roundToInt()}" }
+                            text.add("L $value")
+                        }
+                        if (right != null){
+                            val value = right.let { "${(it * 100).roundToInt()}" }
+                            text.add("R $value")
+                        }
+                        if (case != null)
+                        {
+                            val value = case.let { "${(it * 100).roundToInt()}" }
+
+                            if ((left != null) || (right != null))
+                                text.add("|")
+                            text.add("C $value")
+                        }
+
+                        text.joinToString(" ")
+                    }
+
+                    else -> "L $left R $right"
+                }
+            }
+
+            is SinglePodDevice -> {
+                val headset = device.getBatteryLevelHeadset(context)
+                when {
+                    device is HasCase -> {
+                        val case = device.getBatteryLevelCase(context)
+                        "$headset $case"
+                    }
+
+                    else -> headset
+                }
+            }
+
+            else -> "?"
+        }
+
+        var smallIcon: Int = eu.darken.capod.common.R.drawable.devic_earbuds_generic_both
+
+        val shortBatteryText = when (device) {
+            is DualPodDevice -> {
+            val left = device.batteryLeftPodPercent
+            val right = device.batteryRightPodPercent
+            when {
+                device is HasCase -> {
+                    val case = device.batteryCasePercent
+
+                    if (case != null)
+                    {
+                        smallIcon = eu.darken.capod.common.R.drawable.devic_airpods_gen1_case
+                        val value = case.let { "${(it * 100).roundToInt()}%" }
+                        "C $value"
+                    }
+                    else if ((left != null) && (right != null)) {
+                        smallIcon = eu.darken.capod.common.R.drawable.devic_airpods_gen1_both
+                        val value = averagePercent(left.let { "${(it * 100).roundToInt()}%" }, right.let { "${(it * 100).roundToInt()}%" })
+                        "L·R $value"
+                    }
+                    else if (left != null){
+                        smallIcon = eu.darken.capod.common.R.drawable.devic_airpods_gen1_left
+                        val value = left.let { "${(it * 100).roundToInt()}%" }
+                        "L $value"
+                    }
+                    else if (right != null){
+                        smallIcon = eu.darken.capod.common.R.drawable.devic_airpods_gen1_right
+                        val value = right.let { "${(it * 100).roundToInt()}%" }
+                        "R $value"
+                    }
+                    else {
+                        smallIcon = eu.darken.capod.common.R.drawable.devic_earbuds_generic_both
+                        "?"
+                    }
+                }
+
+                else -> {
+                    smallIcon = eu.darken.capod.common.R.drawable.devic_earbuds_generic_both
+                    "?"
+                }
+            }
+        }
+
+            is SinglePodDevice -> {
+            val headset = device.getBatteryLevelHeadset(context)
+            when {
+                device is HasCase -> {
+                    val case = device.getBatteryLevelCase(context)
+                    "$headset $case"
+                }
+
+                else -> headset
+            }
+        }
+
+            else -> "?"
+        }
+
+        return builder.apply {
+            setCustomContentView(null)
+            setStyle(NotificationCompat.BigTextStyle())
+            setSmallIcon(smallIcon)
+            setLargeIcon(BitmapFactory.decodeResource(context.resources, smallIcon))
+//            setColorized(true)
+            setContentTitle(batteryText)
+            setSubText(stateText)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+                setRequestPromotedOngoing(true)
+            }
+            setShortCriticalText(shortBatteryText)
         }
     }
 
@@ -148,10 +320,18 @@ class MonitorNotifications @Inject constructor(
         }
     }
 
-    suspend fun getNotification(podDevice: PodDevice?): Notification = builderLock.withLock {
-        getBuilder(podDevice).apply {
-            setChannelId(NOTIFICATION_CHANNEL_ID)
-        }.build()
+    suspend fun getNotification(podDevice: PodDevice?, liveUpdate: Boolean): Notification = builderLock.withLock {
+        val notificationBuilder = if (liveUpdate) {
+            getLiveUpdateBuilder(podDevice).apply {
+                setChannelId(NOTIFICATION_CHANNEL_ID)
+            }
+        } else {
+            getBuilder(podDevice).apply {
+                setChannelId(NOTIFICATION_CHANNEL_ID)
+            }
+        }
+
+        notificationBuilder.build()
     }
 
     suspend fun getNotificationConnected(podDevice: PodDevice?): Notification = builderLock.withLock {

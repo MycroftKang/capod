@@ -87,7 +87,7 @@ fun DependencyHandlerScope.addBaseWorkManager() {
 }
 
 fun DependencyHandlerScope.addBaseAndroid() {
-    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.annotation:annotation:1.7.0")
     implementation("androidx.collection:collection-ktx:1.2.0")
     implementation("androidx.preference:preference-ktx:1.2.0")
